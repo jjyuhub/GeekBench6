@@ -539,7 +539,7 @@ jobs:
             echo '{"error": "No benchmark results generated"}' > ./results/macos-arm-latest.json
           fi
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos-arm-benchmark-results
           path: ./results/

@@ -383,11 +383,13 @@ jobs:
 
   benchmark-macos-intel:
     name: Benchmark macOS Intel Runner
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+      - name: Check CPU architecture
+        run: |
+          echo "Running on: $(uname -m)"
       - name: Download and install Geekbench 6
         run: |
           # Download the Geekbench 6 CLI version directly

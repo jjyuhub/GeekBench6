@@ -164,8 +164,8 @@ jobs:
           path: results/
           retention-days: 90
 
-  benchmark-macos:
-    name: Benchmark macOS Runner
+  benchmark-macos-intel:
+    name: Benchmark macOS Intel Runner
     runs-on: macos-latest
     steps:
       - name: Checkout repository
@@ -186,7 +186,7 @@ jobs:
           if [ -z "$GB_DIR" ]; then
             echo "Geekbench directory not found"
             mkdir -p results
-            echo '{"error": "Geekbench directory not found"}' > ./results/macos-latest.json
+            echo '{"error": "Geekbench directory not found"}' > ./results/macos-intel-latest.json
             exit 0
           fi
           
@@ -198,15 +198,15 @@ jobs:
           if [ -z "$GB_EXE" ]; then
             echo "Geekbench executable not found"
             mkdir -p ../results
-            echo '{"error": "Geekbench executable not found"}' > ../results/macos-latest.json
+            echo '{"error": "Geekbench executable not found"}' > ../results/macos-intel-latest.json
             exit 0
           fi
           
           echo "Found executable: $GB_EXE"
           chmod +x "$GB_EXE"
           
-          # Run Geekbench
-          ./"$GB_EXE" || echo "Geekbench completed with non-zero exit code"
+          # Run Geekbench (CPU only for faster execution)
+          ./"$GB_EXE" --cpu || echo "Geekbench completed with non-zero exit code"
           
       - name: Collect results
         run: |
@@ -217,42 +217,138 @@ jobs:
           if [ -d "$RESULTS_DIR" ]; then
             LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
             if [ -n "$LATEST_RESULT" ]; then
-              cp "$LATEST_RESULT" ./results/macos-latest.json
+              cp "$LATEST_RESULT" ./results/macos-intel-latest.json
               echo "Copied result from $LATEST_RESULT"
             else
               echo "No result files found in $RESULTS_DIR"
-              echo '{"error": "No results found"}' > ./results/macos-latest.json
+              echo '{"error": "No results found"}' > ./results/macos-intel-latest.json
             fi
           else
             echo "Results directory not found at $RESULTS_DIR"
             
             # Try the local results directory from the CLI version
-            RESULTS_DIR="./Geekbench 6.2.0 Mac/results"
-            if [ -d "$RESULTS_DIR" ]; then
-              LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
-              if [ -n "$LATEST_RESULT" ]; then
-                cp "$LATEST_RESULT" ./results/macos-latest.json
-                echo "Copied result from $LATEST_RESULT"
+            GB_DIR=$(find . -type d -name "Geekbench*" -depth 1 | head -1)
+            if [ -n "$GB_DIR" ]; then
+              RESULTS_DIR="./$GB_DIR/results"
+              if [ -d "$RESULTS_DIR" ]; then
+                LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
+                if [ -n "$LATEST_RESULT" ]; then
+                  cp "$LATEST_RESULT" ./results/macos-intel-latest.json
+                  echo "Copied result from $LATEST_RESULT"
+                else
+                  echo "No result files found in $RESULTS_DIR"
+                  echo '{"error": "No results found"}' > ./results/macos-intel-latest.json
+                fi
               else
-                echo "No result files found in $RESULTS_DIR"
-                echo '{"error": "No results found"}' > ./results/macos-latest.json
+                echo "Local results directory not found at $RESULTS_DIR"
+                echo '{"error": "Results directory not found"}' > ./results/macos-intel-latest.json
               fi
             else
-              echo "Local results directory not found at $RESULTS_DIR"
-              echo '{"error": "Results directory not found"}' > ./results/macos-latest.json
+              echo '{"error": "Geekbench directory not found"}' > ./results/macos-intel-latest.json
             fi
           fi
           
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: geekbench-results-macos
+          name: geekbench-results-macos-intel
+          path: results/
+          retention-days: 90
+
+  benchmark-macos-arm:
+    name: Benchmark macOS ARM Runner
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download and install Geekbench 6
+        run: |
+          # Download the Geekbench 6 CLI version directly
+          curl -L -o geekbench6.zip https://cdn.geekbench.com/Geekbench-6.2.0-Mac.zip
+          unzip -l geekbench6.zip
+          unzip geekbench6.zip
+          ls -la
+          
+      - name: Run Geekbench 6
+        run: |
+          # Find the correct directory
+          GB_DIR=$(find . -type d -name "Geekbench*" -depth 1 | head -1)
+          if [ -z "$GB_DIR" ]; then
+            echo "Geekbench directory not found"
+            mkdir -p results
+            echo '{"error": "Geekbench directory not found"}' > ./results/macos-arm-latest.json
+            exit 0
+          fi
+          
+          echo "Found Geekbench directory: $GB_DIR"
+          cd "$GB_DIR"
+          
+          # Find and run the executable
+          GB_EXE=$(find . -name "geekbench*" -type f -perm +111 | head -1)
+          if [ -z "$GB_EXE" ]; then
+            echo "Geekbench executable not found"
+            mkdir -p ../results
+            echo '{"error": "Geekbench executable not found"}' > ../results/macos-arm-latest.json
+            exit 0
+          fi
+          
+          echo "Found executable: $GB_EXE"
+          chmod +x "$GB_EXE"
+          
+          # Run Geekbench (CPU only for faster execution)
+          ./"$GB_EXE" --cpu || echo "Geekbench completed with non-zero exit code"
+          
+      - name: Collect results
+        run: |
+          mkdir -p results
+          
+          # Check for results in the standard location
+          RESULTS_DIR="$HOME/Library/Application Support/Geekbench/Geekbench 6/Results"
+          if [ -d "$RESULTS_DIR" ]; then
+            LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
+            if [ -n "$LATEST_RESULT" ]; then
+              cp "$LATEST_RESULT" ./results/macos-arm-latest.json
+              echo "Copied result from $LATEST_RESULT"
+            else
+              echo "No result files found in $RESULTS_DIR"
+              echo '{"error": "No results found"}' > ./results/macos-arm-latest.json
+            fi
+          else
+            echo "Results directory not found at $RESULTS_DIR"
+            
+            # Try the local results directory from the CLI version
+            GB_DIR=$(find . -type d -name "Geekbench*" -depth 1 | head -1)
+            if [ -n "$GB_DIR" ]; then
+              RESULTS_DIR="./$GB_DIR/results"
+              if [ -d "$RESULTS_DIR" ]; then
+                LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
+                if [ -n "$LATEST_RESULT" ]; then
+                  cp "$LATEST_RESULT" ./results/macos-arm-latest.json
+                  echo "Copied result from $LATEST_RESULT"
+                else
+                  echo "No result files found in $RESULTS_DIR"
+                  echo '{"error": "No results found"}' > ./results/macos-arm-latest.json
+                fi
+              else
+                echo "Local results directory not found at $RESULTS_DIR"
+                echo '{"error": "Results directory not found"}' > ./results/macos-arm-latest.json
+              fi
+            else
+              echo '{"error": "Geekbench directory not found"}' > ./results/macos-arm-latest.json
+            fi
+          fi
+          
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: geekbench-results-macos-arm
           path: results/
           retention-days: 90
 
   summarize-results:
     name: Summarize Benchmark Results
-    needs: [benchmark-ubuntu, benchmark-windows, benchmark-macos]
+    needs: [benchmark-ubuntu, benchmark-windows, benchmark-macos-intel, benchmark-macos-arm]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -278,10 +374,10 @@ jobs:
           echo "### Ubuntu Latest" >> benchmark-report.md
           UBUNTU_FILE=$(find all-results -name "ubuntu-latest.json" -type f | head -n 1)
           if [ -f "$UBUNTU_FILE" ]; then
-            SINGLE_SCORE=$(jq -r '.single_core.score' "$UBUNTU_FILE")
-            MULTI_SCORE=$(jq -r '.multi_core.score' "$UBUNTU_FILE")
-            CPU_NAME=$(jq -r '.system_info.processor' "$UBUNTU_FILE")
-            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$UBUNTU_FILE")
+            SINGLE_SCORE=$(jq -r '.single_core.score' "$UBUNTU_FILE" 2>/dev/null || echo "N/A")
+            MULTI_SCORE=$(jq -r '.multi_core.score' "$UBUNTU_FILE" 2>/dev/null || echo "N/A")
+            CPU_NAME=$(jq -r '.system_info.processor' "$UBUNTU_FILE" 2>/dev/null || echo "N/A")
+            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$UBUNTU_FILE" 2>/dev/null || echo "N/A")
             echo "- CPU: $CPU_NAME" >> benchmark-report.md
             echo "- Memory: ${MEMORY}GB" >> benchmark-report.md
             echo "- Single-Core Score: $SINGLE_SCORE" >> benchmark-report.md
@@ -295,10 +391,10 @@ jobs:
           echo "### Windows Latest" >> benchmark-report.md
           WINDOWS_FILE=$(find all-results -name "windows-latest.json" -type f | head -n 1)
           if [ -f "$WINDOWS_FILE" ]; then
-            SINGLE_SCORE=$(jq -r '.single_core.score' "$WINDOWS_FILE")
-            MULTI_SCORE=$(jq -r '.multi_core.score' "$WINDOWS_FILE")
-            CPU_NAME=$(jq -r '.system_info.processor' "$WINDOWS_FILE")
-            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$WINDOWS_FILE")
+            SINGLE_SCORE=$(jq -r '.single_core.score' "$WINDOWS_FILE" 2>/dev/null || echo "N/A")
+            MULTI_SCORE=$(jq -r '.multi_core.score' "$WINDOWS_FILE" 2>/dev/null || echo "N/A")
+            CPU_NAME=$(jq -r '.system_info.processor' "$WINDOWS_FILE" 2>/dev/null || echo "N/A")
+            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$WINDOWS_FILE" 2>/dev/null || echo "N/A")
             echo "- CPU: $CPU_NAME" >> benchmark-report.md
             echo "- Memory: ${MEMORY}GB" >> benchmark-report.md
             echo "- Single-Core Score: $SINGLE_SCORE" >> benchmark-report.md
@@ -308,14 +404,14 @@ jobs:
           fi
           echo "" >> benchmark-report.md
           
-          # Process macOS results
-          echo "### macOS Latest" >> benchmark-report.md
-          MACOS_FILE=$(find all-results -name "macos-latest.json" -type f | head -n 1)
-          if [ -f "$MACOS_FILE" ]; then
-            SINGLE_SCORE=$(jq -r '.single_core.score' "$MACOS_FILE")
-            MULTI_SCORE=$(jq -r '.multi_core.score' "$MACOS_FILE")
-            CPU_NAME=$(jq -r '.system_info.processor' "$MACOS_FILE")
-            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$MACOS_FILE")
+          # Process macOS Intel results
+          echo "### macOS Intel Latest" >> benchmark-report.md
+          MACOS_INTEL_FILE=$(find all-results -name "macos-intel-latest.json" -type f | head -n 1)
+          if [ -f "$MACOS_INTEL_FILE" ]; then
+            SINGLE_SCORE=$(jq -r '.single_core.score' "$MACOS_INTEL_FILE" 2>/dev/null || echo "N/A")
+            MULTI_SCORE=$(jq -r '.multi_core.score' "$MACOS_INTEL_FILE" 2>/dev/null || echo "N/A")
+            CPU_NAME=$(jq -r '.system_info.processor' "$MACOS_INTEL_FILE" 2>/dev/null || echo "N/A")
+            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$MACOS_INTEL_FILE" 2>/dev/null || echo "N/A")
             echo "- CPU: $CPU_NAME" >> benchmark-report.md
             echo "- Memory: ${MEMORY}GB" >> benchmark-report.md
             echo "- Single-Core Score: $SINGLE_SCORE" >> benchmark-report.md
@@ -323,6 +419,50 @@ jobs:
           else
             echo "- No results found" >> benchmark-report.md
           fi
+          echo "" >> benchmark-report.md
+          
+          # Process macOS ARM results
+          echo "### macOS ARM Latest (Apple Silicon)" >> benchmark-report.md
+          MACOS_ARM_FILE=$(find all-results -name "macos-arm-latest.json" -type f | head -n 1)
+          if [ -f "$MACOS_ARM_FILE" ]; then
+            SINGLE_SCORE=$(jq -r '.single_core.score' "$MACOS_ARM_FILE" 2>/dev/null || echo "N/A")
+            MULTI_SCORE=$(jq -r '.multi_core.score' "$MACOS_ARM_FILE" 2>/dev/null || echo "N/A")
+            CPU_NAME=$(jq -r '.system_info.processor' "$MACOS_ARM_FILE" 2>/dev/null || echo "N/A")
+            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$MACOS_ARM_FILE" 2>/dev/null || echo "N/A")
+            echo "- CPU: $CPU_NAME" >> benchmark-report.md
+            echo "- Memory: ${MEMORY}GB" >> benchmark-report.md
+            echo "- Single-Core Score: $SINGLE_SCORE" >> benchmark-report.md
+            echo "- Multi-Core Score: $MULTI_SCORE" >> benchmark-report.md
+          else
+            echo "- No results found" >> benchmark-report.md
+          fi
+          echo "" >> benchmark-report.md
+          
+          # Add comparison table
+          echo "## Score Comparison" >> benchmark-report.md
+          echo "" >> benchmark-report.md
+          echo "| Runner | Single-Core Score | Multi-Core Score |" >> benchmark-report.md
+          echo "|--------|-------------------|------------------|" >> benchmark-report.md
+          
+          # Ubuntu
+          UBUNTU_SINGLE=$(jq -r '.single_core.score' "$UBUNTU_FILE" 2>/dev/null || echo "N/A")
+          UBUNTU_MULTI=$(jq -r '.multi_core.score' "$UBUNTU_FILE" 2>/dev/null || echo "N/A")
+          echo "| Ubuntu Latest | $UBUNTU_SINGLE | $UBUNTU_MULTI |" >> benchmark-report.md
+          
+          # Windows
+          WINDOWS_SINGLE=$(jq -r '.single_core.score' "$WINDOWS_FILE" 2>/dev/null || echo "N/A")
+          WINDOWS_MULTI=$(jq -r '.multi_core.score' "$WINDOWS_FILE" 2>/dev/null || echo "N/A")
+          echo "| Windows Latest | $WINDOWS_SINGLE | $WINDOWS_MULTI |" >> benchmark-report.md
+          
+          # macOS Intel
+          MACOS_INTEL_SINGLE=$(jq -r '.single_core.score' "$MACOS_INTEL_FILE" 2>/dev/null || echo "N/A")
+          MACOS_INTEL_MULTI=$(jq -r '.multi_core.score' "$MACOS_INTEL_FILE" 2>/dev/null || echo "N/A")
+          echo "| macOS Intel | $MACOS_INTEL_SINGLE | $MACOS_INTEL_MULTI |" >> benchmark-report.md
+          
+          # macOS ARM
+          MACOS_ARM_SINGLE=$(jq -r '.single_core.score' "$MACOS_ARM_FILE" 2>/dev/null || echo "N/A")
+          MACOS_ARM_MULTI=$(jq -r '.multi_core.score' "$MACOS_ARM_FILE" 2>/dev/null || echo "N/A")
+          echo "| macOS ARM | $MACOS_ARM_SINGLE | $MACOS_ARM_MULTI |" >> benchmark-report.md
           
       - name: Upload summary report
         uses: actions/upload-artifact@v4

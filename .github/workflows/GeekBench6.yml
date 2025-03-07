@@ -1,43 +1,180 @@
-name: Geekbench 6 Benchmark
+name: Geekbench 6 Runner Benchmark
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly on Sunday at midnight UTC
 
 jobs:
-  run-geekbench:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  benchmark-ubuntu:
+    name: Benchmark Ubuntu Runner
+    runs-on: ubuntu-latest
     steps:
-      - name: Set up Geekbench 6
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget
-          wget https://cdn.geekbench.com/Geekbench-6.0.0-Linux.tar.gz
-          tar -xvf Geekbench-6.0.0-Linux.tar.gz
-          cd Geekbench-6.0.0-Linux
-          ./geekbench6
-        shell: bash
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up Geekbench 6
-        if: runner.os == 'Windows'
+      - name: Download and install Geekbench 6
         run: |
-          Invoke-WebRequest -Uri https://cdn.geekbench.com/Geekbench-6.0.0-WindowsSetup.exe -OutFile Geekbench-6.0.0-WindowsSetup.exe
-          Start-Process -FilePath .\Geekbench-6.0.0-WindowsSetup.exe -ArgumentList '/S' -NoNewWindow -Wait
-          & 'C:\Program Files\Geekbench 6\geekbench6.exe'
+          wget https://cdn.geekbench.com/Geekbench-6.2.0-Linux.tar.gz
+          tar xf Geekbench-6.2.0-Linux.tar.gz
+          cd Geekbench-6.2.0-Linux
+          
+      - name: Run Geekbench 6
+        run: |
+          cd Geekbench-6.2.0-Linux
+          ./geekbench6 --no-upload
+          
+      - name: Collect results
+        run: |
+          cd Geekbench-6.2.0-Linux
+          mkdir -p ../results
+          cp ./results/*.json ../results/ubuntu-latest.json
+          
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: geekbench-results-ubuntu
+          path: results/
+          retention-days: 90
+
+  benchmark-windows:
+    name: Benchmark Windows Runner
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download and install Geekbench 6
+        run: |
+          Invoke-WebRequest -Uri "https://cdn.geekbench.com/Geekbench-6.2.0-WindowsSetup.exe" -OutFile "geekbench6.exe"
+          Start-Process -FilePath ".\geekbench6.exe" -ArgumentList "/S" -Wait
+          
+      - name: Run Geekbench 6
+        run: |
+          & "C:\Program Files\Geekbench 6\geekbench6.exe" --no-upload
+          
+      - name: Collect results
         shell: powershell
-
-      - name: Set up Geekbench 6
-        if: runner.os == 'macOS'
         run: |
-          curl -O https://cdn.geekbench.com/Geekbench-6.0.0-Mac.zip
-          unzip Geekbench-6.0.0-Mac.zip
-          ./Geekbench\ 6.app/Contents/MacOS/Geekbench\ 6
-        shell: bash
+          $resultsFolder = "$env:USERPROFILE\Documents\Geekbench 6\results"
+          New-Item -ItemType Directory -Force -Path ".\results"
+          $latestFile = Get-ChildItem -Path $resultsFolder -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          Copy-Item -Path $latestFile.FullName -Destination ".\results\windows-latest.json"
+          
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: geekbench-results-windows
+          path: results/
+          retention-days: 90
 
+  benchmark-macos:
+    name: Benchmark macOS Runner
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download and install Geekbench 6
+        run: |
+          curl -L -o geekbench6.dmg https://cdn.geekbench.com/Geekbench-6.2.0-Mac.dmg
+          hdiutil attach geekbench6.dmg
+          cp -R "/Volumes/Geekbench 6/Geekbench 6.app" /Applications/
+          hdiutil detach "/Volumes/Geekbench 6"
+          
+      - name: Run Geekbench 6
+        run: |
+          "/Applications/Geekbench 6.app/Contents/Resources/geekbench6" --no-upload
+          
+      - name: Collect results
+        run: |
+          mkdir -p results
+          cp ~/Library/Application\ Support/Geekbench/Geekbench\ 6/results/*.json results/macos-latest.json
+          
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: geekbench-results-macos
+          path: results/
+          retention-days: 90
+
+  summarize-results:
+    name: Summarize Benchmark Results
+    needs: [benchmark-ubuntu, benchmark-windows, benchmark-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Download all results
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results
+          
+      - name: Install jq for JSON parsing
+        run: sudo apt-get install -y jq
+        
+      - name: Generate summary report
+        run: |
+          echo "# Geekbench 6 Benchmark Results" > benchmark-report.md
+          echo "Run date: $(date)" >> benchmark-report.md
+          echo "" >> benchmark-report.md
+          echo "## Runner Specifications" >> benchmark-report.md
+          echo "" >> benchmark-report.md
+          
+          # Process Ubuntu results
+          echo "### Ubuntu Latest" >> benchmark-report.md
+          UBUNTU_FILE=$(find all-results -name "ubuntu-latest.json" -type f | head -n 1)
+          if [ -f "$UBUNTU_FILE" ]; then
+            SINGLE_SCORE=$(jq -r '.single_core.score' "$UBUNTU_FILE")
+            MULTI_SCORE=$(jq -r '.multi_core.score' "$UBUNTU_FILE")
+            CPU_NAME=$(jq -r '.system_info.processor' "$UBUNTU_FILE")
+            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$UBUNTU_FILE")
+            echo "- CPU: $CPU_NAME" >> benchmark-report.md
+            echo "- Memory: ${MEMORY}GB" >> benchmark-report.md
+            echo "- Single-Core Score: $SINGLE_SCORE" >> benchmark-report.md
+            echo "- Multi-Core Score: $MULTI_SCORE" >> benchmark-report.md
+          else
+            echo "- No results found" >> benchmark-report.md
+          fi
+          echo "" >> benchmark-report.md
+          
+          # Process Windows results
+          echo "### Windows Latest" >> benchmark-report.md
+          WINDOWS_FILE=$(find all-results -name "windows-latest.json" -type f | head -n 1)
+          if [ -f "$WINDOWS_FILE" ]; then
+            SINGLE_SCORE=$(jq -r '.single_core.score' "$WINDOWS_FILE")
+            MULTI_SCORE=$(jq -r '.multi_core.score' "$WINDOWS_FILE")
+            CPU_NAME=$(jq -r '.system_info.processor' "$WINDOWS_FILE")
+            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$WINDOWS_FILE")
+            echo "- CPU: $CPU_NAME" >> benchmark-report.md
+            echo "- Memory: ${MEMORY}GB" >> benchmark-report.md
+            echo "- Single-Core Score: $SINGLE_SCORE" >> benchmark-report.md
+            echo "- Multi-Core Score: $MULTI_SCORE" >> benchmark-report.md
+          else
+            echo "- No results found" >> benchmark-report.md
+          fi
+          echo "" >> benchmark-report.md
+          
+          # Process macOS results
+          echo "### macOS Latest" >> benchmark-report.md
+          MACOS_FILE=$(find all-results -name "macos-latest.json" -type f | head -n 1)
+          if [ -f "$MACOS_FILE" ]; then
+            SINGLE_SCORE=$(jq -r '.single_core.score' "$MACOS_FILE")
+            MULTI_SCORE=$(jq -r '.multi_core.score' "$MACOS_FILE")
+            CPU_NAME=$(jq -r '.system_info.processor' "$MACOS_FILE")
+            MEMORY=$(jq -r '.system_info.memory_size_bytes/1073741824 | floor' "$MACOS_FILE")
+            echo "- CPU: $CPU_NAME" >> benchmark-report.md
+            echo "- Memory: ${MEMORY}GB" >> benchmark-report.md
+            echo "- Single-Core Score: $SINGLE_SCORE" >> benchmark-report.md
+            echo "- Multi-Core Score: $MULTI_SCORE" >> benchmark-report.md
+          else
+            echo "- No results found" >> benchmark-report.md
+          fi
+          
+      - name: Upload summary report
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: benchmark-report.md
+          retention-days: 90

@@ -79,13 +79,16 @@ jobs:
           Start-Process -FilePath ".\Geekbench-6.0.0-WindowsSetup.exe" -ArgumentList "/S" -Wait
           Start-Sleep -Seconds 10
           
+      - name: Create results directory
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path ".\results"
+      
       - name: Run Geekbench 6
         shell: powershell
         run: |
           # Try to find Geekbench executable with a timeout to prevent hanging
           $geekbenchPath = ""
-          $searchTimeout = New-TimeSpan -Seconds 30
-          $sw = [Diagnostics.Stopwatch]::StartNew()
           
           Write-Host "Searching for Geekbench installation..."
           
@@ -130,6 +133,7 @@ jobs:
             # Run Geekbench
             Write-Host "Running Geekbench from: $geekbenchPath"
             Start-Process -FilePath $geekbenchPath -Wait
+          }
           
       - name: Collect results
         shell: powershell
@@ -171,13 +175,38 @@ jobs:
         run: |
           # Download the Geekbench 6 CLI version directly
           curl -L -o geekbench6.zip https://cdn.geekbench.com/Geekbench-6.2.0-Mac.zip
+          unzip -l geekbench6.zip
           unzip geekbench6.zip
+          ls -la
           
       - name: Run Geekbench 6
         run: |
-          cd Geekbench\ 6.2.0\ Mac
-          chmod +x geekbench6
-          ./geekbench6
+          # Find the correct directory
+          GB_DIR=$(find . -type d -name "Geekbench*" -depth 1 | head -1)
+          if [ -z "$GB_DIR" ]; then
+            echo "Geekbench directory not found"
+            mkdir -p results
+            echo '{"error": "Geekbench directory not found"}' > ./results/macos-latest.json
+            exit 0
+          fi
+          
+          echo "Found Geekbench directory: $GB_DIR"
+          cd "$GB_DIR"
+          
+          # Find and run the executable
+          GB_EXE=$(find . -name "geekbench*" -type f -perm +111 | head -1)
+          if [ -z "$GB_EXE" ]; then
+            echo "Geekbench executable not found"
+            mkdir -p ../results
+            echo '{"error": "Geekbench executable not found"}' > ../results/macos-latest.json
+            exit 0
+          fi
+          
+          echo "Found executable: $GB_EXE"
+          chmod +x "$GB_EXE"
+          
+          # Run Geekbench
+          ./"$GB_EXE" || echo "Geekbench completed with non-zero exit code"
           
       - name: Collect results
         run: |

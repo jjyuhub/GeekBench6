@@ -423,7 +423,7 @@ jobs:
           mkdir -p results
           
           # Run Geekbench with CPU only (GPU tests will be skipped)
-          DYLD_LIBRARY_PATH="${GB_DIR}/Contents/Resources" "$GB_EXE" --cpu || echo "Geekbench completed with non-zero exit code"
+          DYLD_LIBRARY_PATH="${GB_DIR}/Contents/Resources" GEEKBENCH_SKIP_GPU=1 "$GB_EXE" --cpu || echo "Geekbench completed with non-zero exit code"
       
       - name: Collect results
         run: |

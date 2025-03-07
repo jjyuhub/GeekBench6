@@ -1,0 +1,43 @@
+name: Geekbench 6 Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  run-geekbench:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Set up Geekbench 6
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://cdn.geekbench.com/Geekbench-6.0.0-Linux.tar.gz
+          tar -xvf Geekbench-6.0.0-Linux.tar.gz
+          cd Geekbench-6.0.0-Linux
+          ./geekbench6
+        shell: bash
+
+      - name: Set up Geekbench 6
+        if: runner.os == 'Windows'
+        run: |
+          Invoke-WebRequest -Uri https://cdn.geekbench.com/Geekbench-6.0.0-WindowsSetup.exe -OutFile Geekbench-6.0.0-WindowsSetup.exe
+          Start-Process -FilePath .\Geekbench-6.0.0-WindowsSetup.exe -ArgumentList '/S' -NoNewWindow -Wait
+          & 'C:\Program Files\Geekbench 6\geekbench6.exe'
+        shell: powershell
+
+      - name: Set up Geekbench 6
+        if: runner.os == 'macOS'
+        run: |
+          curl -O https://cdn.geekbench.com/Geekbench-6.0.0-Mac.zip
+          unzip Geekbench-6.0.0-Mac.zip
+          cd Geekbench\ 6
+          ./geekbench6
+        shell: bash

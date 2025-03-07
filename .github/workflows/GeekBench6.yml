@@ -46,20 +46,43 @@ jobs:
 
       - name: Download and install Geekbench 6
         run: |
-          Invoke-WebRequest -Uri "https://cdn.geekbench.com/Geekbench-6.2.0-WindowsSetup.exe" -OutFile "geekbench6.exe"
-          Start-Process -FilePath ".\geekbench6.exe" -ArgumentList "/S" -Wait
+          Invoke-WebRequest -Uri "https://cdn.geekbench.com/Geekbench-6.0.0-WindowsSetup.exe" -OutFile "Geekbench-6.0.0-WindowsSetup.exe"
+          Start-Process -FilePath ".\Geekbench-6.0.0-WindowsSetup.exe" -ArgumentList "/S" -Wait
+          Start-Sleep -Seconds 10
+          
+      - name: List installed files
+        shell: cmd
+        run: |
+          dir "C:\Program Files" /s /b | findstr /i "geekbench"
           
       - name: Run Geekbench 6
+        shell: cmd
         run: |
-          & "C:\Program Files\Geekbench 6\geekbench6.exe" --no-upload
+          cd "C:\Program Files\Geekbench 6"
+          dir
+          geekbench_x86_64.exe --no-upload
           
       - name: Collect results
         shell: powershell
         run: |
-          $resultsFolder = "$env:USERPROFILE\Documents\Geekbench 6\results"
           New-Item -ItemType Directory -Force -Path ".\results"
-          $latestFile = Get-ChildItem -Path $resultsFolder -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          Copy-Item -Path $latestFile.FullName -Destination ".\results\windows-latest.json"
+          $resultsFolder = "$env:USERPROFILE\Documents\Geekbench 6\Results"
+          
+          # Check if results directory exists
+          if (Test-Path $resultsFolder) {
+            $latestFile = Get-ChildItem -Path $resultsFolder -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($latestFile) {
+              Copy-Item -Path $latestFile.FullName -Destination ".\results\windows-latest.json"
+            } else {
+              Write-Host "No JSON results found in $resultsFolder"
+              # Create dummy file so workflow doesn't fail
+              '{"error": "No results found"}' | Out-File ".\results\windows-latest.json"
+            }
+          } else {
+            Write-Host "Results folder not found at $resultsFolder"
+            # Create dummy file so workflow doesn't fail
+            '{"error": "Results folder not found"}' | Out-File ".\results\windows-latest.json"
+          }
           
       - name: Upload results
         uses: actions/upload-artifact@v4

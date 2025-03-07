@@ -387,17 +387,19 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Download and install Geekbench 6
         run: |
           # Download the Geekbench 6 CLI version directly
           curl -L -o geekbench6.zip https://cdn.geekbench.com/Geekbench-6.2.0-Mac.zip
-          unzip -q geekbench6.zip
+          unzip -l geekbench6.zip
+          unzip geekbench6.zip
           ls -la
-      
+          
       - name: Run Geekbench 6
         run: |
-          # Find the correct directory - fix the find syntax for macOS
-          GB_DIR=$(find . -type d -name "Geekbench*.app" -maxdepth 1 | head -1)
+          # Find the correct directory
+          GB_DIR=$(find . -type d -name "Geekbench*" -depth 1 | head -1)
           if [ -z "$GB_DIR" ]; then
             echo "Geekbench directory not found"
             mkdir -p results
@@ -406,25 +408,23 @@ jobs:
           fi
           
           echo "Found Geekbench directory: $GB_DIR"
+          cd "$GB_DIR"
           
-          # Find the executable in the Resources directory
-          GB_EXE="${GB_DIR}/Contents/Resources/geekbench_x86_64"
-          if [ ! -f "$GB_EXE" ]; then
+          # Find and run the executable
+          GB_EXE=$(find . -name "geekbench*" -type f -perm +111 | head -1)
+          if [ -z "$GB_EXE" ]; then
             echo "Geekbench executable not found"
-            mkdir -p results
-            echo '{"error": "Geekbench executable not found"}' > ./results/macos-intel-latest.json
+            mkdir -p ../results
+            echo '{"error": "Geekbench executable not found"}' > ../results/macos-intel-latest.json
             exit 0
           fi
           
           echo "Found executable: $GB_EXE"
           chmod +x "$GB_EXE"
           
-          # Create a temporary license file to allow offline running
-          mkdir -p results
+          # Run Geekbench (CPU only for faster execution)
+          ./"$GB_EXE" --cpu || echo "Geekbench completed with non-zero exit code"
           
-          # Run Geekbench with CPU only (GPU tests will be skipped)
-          DYLD_LIBRARY_PATH="${GB_DIR}/Contents/Resources" GEEKBENCH_SKIP_GPU=1 "$GB_EXE" --cpu || echo "Geekbench completed with non-zero exit code"
-      
       - name: Collect results
         run: |
           mkdir -p results
@@ -444,9 +444,9 @@ jobs:
             echo "Results directory not found at $RESULTS_DIR"
             
             # Try the local results directory from the CLI version
-            GB_DIR=$(find . -type d -name "Geekbench*.app" -maxdepth 1 | head -1)
+            GB_DIR=$(find . -type d -name "Geekbench*" -depth 1 | head -1)
             if [ -n "$GB_DIR" ]; then
-              RESULTS_DIR="${GB_DIR}/Contents/Resources/results"
+              RESULTS_DIR="./$GB_DIR/results"
               if [ -d "$RESULTS_DIR" ]; then
                 LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
                 if [ -n "$LATEST_RESULT" ]; then
@@ -464,7 +464,7 @@ jobs:
               echo '{"error": "Geekbench directory not found"}' > ./results/macos-intel-latest.json
             fi
           fi
-      
+          
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:

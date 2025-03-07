@@ -22,13 +22,42 @@ jobs:
       - name: Run Geekbench 6
         run: |
           cd Geekbench-6.2.0-Linux
-          ./geekbench6 --no-upload
+          ./geekbench6
           
       - name: Collect results
         run: |
-          cd Geekbench-6.2.0-Linux
-          mkdir -p ../results
-          cp ./results/*.json ../results/ubuntu-latest.json
+          mkdir -p results
+          
+          # Look for the most recent result file
+          RESULTS_DIR="$HOME/.geekbench6/results"
+          if [ -d "$RESULTS_DIR" ]; then
+            LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -printf "%T@ %p\n" | sort -n | tail -1 | cut -f2- -d" ")
+            if [ -n "$LATEST_RESULT" ]; then
+              cp "$LATEST_RESULT" ./results/ubuntu-latest.json
+              echo "Copied result from $LATEST_RESULT"
+            else
+              echo "No result files found in $RESULTS_DIR"
+              echo '{"error": "No results found"}' > ./results/ubuntu-latest.json
+            fi
+          else
+            echo "Results directory not found at $RESULTS_DIR"
+            
+            # Try alternate location
+            RESULTS_DIR="$(pwd)/Geekbench-6.2.0-Linux/results"
+            if [ -d "$RESULTS_DIR" ]; then
+              LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -printf "%T@ %p\n" | sort -n | tail -1 | cut -f2- -d" ")
+              if [ -n "$LATEST_RESULT" ]; then
+                cp "$LATEST_RESULT" ./results/ubuntu-latest.json
+                echo "Copied result from $LATEST_RESULT"
+              else
+                echo "No result files found in $RESULTS_DIR"
+                echo '{"error": "No results found"}' > ./results/ubuntu-latest.json
+              fi
+            else
+              echo "Alternate results directory not found at $RESULTS_DIR"
+              echo '{"error": "Results directory not found"}' > ./results/ubuntu-latest.json
+            fi
+          fi
           
       - name: Upload results
         uses: actions/upload-artifact@v4
@@ -50,17 +79,57 @@ jobs:
           Start-Process -FilePath ".\Geekbench-6.0.0-WindowsSetup.exe" -ArgumentList "/S" -Wait
           Start-Sleep -Seconds 10
           
-      - name: List installed files
-        shell: cmd
-        run: |
-          dir "C:\Program Files" /s /b | findstr /i "geekbench"
-          
       - name: Run Geekbench 6
-        shell: cmd
+        shell: powershell
         run: |
-          cd "C:\Program Files\Geekbench 6"
-          dir
-          geekbench_x86_64.exe --no-upload
+          # Try to find Geekbench executable with a timeout to prevent hanging
+          $geekbenchPath = ""
+          $searchTimeout = New-TimeSpan -Seconds 30
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          
+          Write-Host "Searching for Geekbench installation..."
+          
+          # Common installation locations to check
+          $possiblePaths = @(
+            "C:\Program Files\Geekbench 6\geekbench_x86_64.exe",
+            "C:\Program Files\Geekbench 6\geekbench6.exe",
+            "C:\Program Files (x86)\Geekbench 6\geekbench_x86_64.exe",
+            "C:\Program Files (x86)\Geekbench 6\geekbench6.exe"
+          )
+          
+          foreach ($path in $possiblePaths) {
+            if (Test-Path $path) {
+              $geekbenchPath = $path
+              Write-Host "Found Geekbench at: $geekbenchPath"
+              break
+            }
+          }
+          
+          if ($geekbenchPath -eq "") {
+            Write-Host "Geekbench executable not found in common locations. Installing portable version..."
+            
+            # Download portable version as fallback
+            Invoke-WebRequest -Uri "https://cdn.geekbench.com/Geekbench-6.0.0-WindowsSetup.exe" -OutFile "Geekbench-Portable.exe"
+            Start-Process -FilePath ".\Geekbench-Portable.exe" -ArgumentList "/S" -Wait
+            Start-Sleep -Seconds 10
+            
+            # Try again with common paths
+            foreach ($path in $possiblePaths) {
+              if (Test-Path $path) {
+                $geekbenchPath = $path
+                Write-Host "Found Geekbench at: $geekbenchPath after installation"
+                break
+              }
+            }
+          }
+          
+          if ($geekbenchPath -eq "") {
+            Write-Host "Geekbench not found after installation attempt. Creating dummy result."
+            '{"error": "Geekbench executable not found"}' | Out-File ".\results\windows-latest.json" -Force
+          } else {
+            # Run Geekbench
+            Write-Host "Running Geekbench from: $geekbenchPath"
+            Start-Process -FilePath $geekbenchPath -Wait
           
       - name: Collect results
         shell: powershell
@@ -100,19 +169,50 @@ jobs:
 
       - name: Download and install Geekbench 6
         run: |
-          curl -L -o geekbench6.dmg https://cdn.geekbench.com/Geekbench-6.2.0-Mac.dmg
-          hdiutil attach geekbench6.dmg
-          cp -R "/Volumes/Geekbench 6/Geekbench 6.app" /Applications/
-          hdiutil detach "/Volumes/Geekbench 6"
+          # Download the Geekbench 6 CLI version directly
+          curl -L -o geekbench6.zip https://cdn.geekbench.com/Geekbench-6.2.0-Mac.zip
+          unzip geekbench6.zip
           
       - name: Run Geekbench 6
         run: |
-          "/Applications/Geekbench 6.app/Contents/Resources/geekbench6" --no-upload
+          cd Geekbench\ 6.2.0\ Mac
+          chmod +x geekbench6
+          ./geekbench6
           
       - name: Collect results
         run: |
           mkdir -p results
-          cp ~/Library/Application\ Support/Geekbench/Geekbench\ 6/results/*.json results/macos-latest.json
+          
+          # Check for results in the standard location
+          RESULTS_DIR="$HOME/Library/Application Support/Geekbench/Geekbench 6/Results"
+          if [ -d "$RESULTS_DIR" ]; then
+            LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
+            if [ -n "$LATEST_RESULT" ]; then
+              cp "$LATEST_RESULT" ./results/macos-latest.json
+              echo "Copied result from $LATEST_RESULT"
+            else
+              echo "No result files found in $RESULTS_DIR"
+              echo '{"error": "No results found"}' > ./results/macos-latest.json
+            fi
+          else
+            echo "Results directory not found at $RESULTS_DIR"
+            
+            # Try the local results directory from the CLI version
+            RESULTS_DIR="./Geekbench 6.2.0 Mac/results"
+            if [ -d "$RESULTS_DIR" ]; then
+              LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
+              if [ -n "$LATEST_RESULT" ]; then
+                cp "$LATEST_RESULT" ./results/macos-latest.json
+                echo "Copied result from $LATEST_RESULT"
+              else
+                echo "No result files found in $RESULTS_DIR"
+                echo '{"error": "No results found"}' > ./results/macos-latest.json
+              fi
+            else
+              echo "Local results directory not found at $RESULTS_DIR"
+              echo '{"error": "Results directory not found"}' > ./results/macos-latest.json
+            fi
+          fi
           
       - name: Upload results
         uses: actions/upload-artifact@v4

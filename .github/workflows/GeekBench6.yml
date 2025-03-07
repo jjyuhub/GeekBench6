@@ -496,38 +496,37 @@ jobs:
           mkdir -p results
           
           # Show the extracted contents to debug
-          ls -la
-          find . -name "Geekbench*" -type d
-      - name: Find and run Geekbench
+          find . -name "geekbench*" -type f
+      - name: Find ARM executable
         run: |
-          # Find executable directly - don't rely on directory structure
-          GB_EXE=$(find . -name "geekbench_arm64" -type f)
+          # Look specifically for ARM executables first
+          GB_EXE=$(find . -name "geekbench_arm64" -o -name "geekbench_aarch64" -type f | head -1)
           
+          # If no ARM executable, force error as we need to run on ARM
           if [ -z "$GB_EXE" ]; then
-            echo "Looking for alternative executables..."
-            # Try any geekbench executable we can find
-            GB_EXE=$(find . -name "geekbench*" -type f -perm +111 | grep -v "workload" | head -1)
-          fi
-          
-          if [ -z "$GB_EXE" ]; then
-            echo "::error::No Geekbench executable found"
-            echo '{"error": "No Geekbench executable found"}' > ./results/macos-arm-latest.json
-            # Show what was extracted
-            find . -type f -name "geekbench*"
+            echo "::error::No ARM Geekbench executable found!"
+            # List all executables for debugging
+            echo "Available executables:"
+            find . -name "geekbench*" -type f -perm +111 | xargs file
+            echo '{"error": "No ARM executable found"}' > ./results/macos-arm-latest.json
             exit 1
           fi
           
-          echo "Found Geekbench executable: $GB_EXE"
-          file "$GB_EXE" || echo "Could not determine file type"
+          echo "Found ARM executable: $GB_EXE"
+          file "$GB_EXE"
           
           # Make executable
           chmod +x "$GB_EXE"
           
-          # Run Geekbench
+          # Save path for next step
+          echo "GB_EXE=$GB_EXE" >> $GITHUB_ENV
+      - name: Run Geekbench on ARM
+        run: |
+          # Run Geekbench (CPU only, don't use --no-upload as it requires Pro)
           echo "Running benchmark with: $GB_EXE"
-          "$GB_EXE" --cpu --no-upload || echo "Geekbench completed with non-zero exit code"
+          "$GB_EXE" --cpu || echo "Geekbench completed with non-zero exit code"
           
-          # Look for results
+          # Look for results - they're timestamped
           RESULTS_FILE=$(find . -name "*.gb6" -type f -newer geekbench6.zip | head -1)
           
           if [ -n "$RESULTS_FILE" ]; then

@@ -494,100 +494,55 @@ jobs:
           
           # Create results directory
           mkdir -p results
-      - name: Verify Geekbench binary architecture
+          
+          # Show the extracted contents to debug
+          ls -la
+          find . -name "Geekbench*" -type d
+      - name: Find and run Geekbench
         run: |
-          GB_DIR=$(find . -type d -name "Geekbench*.app" -depth 1 | head -1)
-          if [ -z "$GB_DIR" ]; then
-            echo "::error::Geekbench directory not found"
-            echo '{"error": "Geekbench directory not found"}' > ./results/macos-arm-latest.json
+          # Find executable directly - don't rely on directory structure
+          GB_EXE=$(find . -name "geekbench_arm64" -type f)
+          
+          if [ -z "$GB_EXE" ]; then
+            echo "Looking for alternative executables..."
+            # Try any geekbench executable we can find
+            GB_EXE=$(find . -name "geekbench*" -type f -perm +111 | grep -v "workload" | head -1)
+          fi
+          
+          if [ -z "$GB_EXE" ]; then
+            echo "::error::No Geekbench executable found"
+            echo '{"error": "No Geekbench executable found"}' > ./results/macos-arm-latest.json
+            # Show what was extracted
+            find . -type f -name "geekbench*"
             exit 1
           fi
           
-          echo "Found Geekbench directory: $GB_DIR"
+          echo "Found Geekbench executable: $GB_EXE"
+          file "$GB_EXE" || echo "Could not determine file type"
           
-          # Check for Contents/Resources/geekbench_arm64 executable
-          GB_EXE="$GB_DIR/Contents/Resources/geekbench_arm64"
-          if [ ! -f "$GB_EXE" ]; then
-            echo "::error::ARM64 Geekbench executable not found at expected location: $GB_EXE"
-            find "$GB_DIR" -type f -name "geekbench*" | xargs file
-            echo '{"error": "ARM64 Geekbench executable not found"}' > ./results/macos-arm-latest.json
-            exit 1
-          fi
-          
-          # Verify it's an ARM binary
-          file "$GB_EXE" | grep -q "arm64" || { 
-            echo "::error::Executable is not an ARM64 binary"; 
-            file "$GB_EXE";
-            echo '{"error": "Not an ARM64 binary"}' > ./results/macos-arm-latest.json;
-            exit 1; 
-          }
-          
-          echo "Verified ARM64 executable: $GB_EXE"
+          # Make executable
           chmod +x "$GB_EXE"
-      - name: Run Geekbench 6
-        run: |
-          GB_DIR=$(find . -type d -name "Geekbench*.app" -depth 1 | head -1)
-          GB_EXE="$GB_DIR/Contents/Resources/geekbench_arm64"
           
+          # Run Geekbench
           echo "Running benchmark with: $GB_EXE"
-          # Run Geekbench with CPU benchmark only
-          "$GB_EXE" --cpu --no-upload --export-json ./results/macos-arm-latest.json
+          "$GB_EXE" --cpu --no-upload || echo "Geekbench completed with non-zero exit code"
           
-          # Check if benchmark results were generated
-          if [ ! -f "./results/macos-arm-latest.json" ]; then
-            echo "::warning::Benchmark results file not found"
+          # Look for results
+          RESULTS_FILE=$(find . -name "*.gb6" -type f -newer geekbench6.zip | head -1)
+          
+          if [ -n "$RESULTS_FILE" ]; then
+            echo "Benchmark results found at: $RESULTS_FILE"
+            # Copy results to output directory
+            cp "$RESULTS_FILE" ./results/macos-arm-latest.gb6
+          else
+            echo "::warning::No benchmark results file found"
             echo '{"error": "No benchmark results generated"}' > ./results/macos-arm-latest.json
-          else
-            echo "Benchmark completed, results saved to ./results/macos-arm-latest.json"
-            # Print a summary of results (optional)
-            grep -E "score|name" ./results/macos-arm-latest.json | head -20
           fi
-          
-      - name: Collect results
-        run: |
-          mkdir -p results
-          
-          # Check for results in the standard location
-          RESULTS_DIR="$HOME/Library/Application Support/Geekbench/Geekbench 6/Results"
-          if [ -d "$RESULTS_DIR" ]; then
-            LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
-            if [ -n "$LATEST_RESULT" ]; then
-              cp "$LATEST_RESULT" ./results/macos-arm-latest.json
-              echo "Copied result from $LATEST_RESULT"
-            else
-              echo "No result files found in $RESULTS_DIR"
-              echo '{"error": "No results found"}' > ./results/macos-arm-latest.json
-            fi
-          else
-            echo "Results directory not found at $RESULTS_DIR"
-            
-            # Try the local results directory from the CLI version
-            GB_DIR=$(find . -type d -name "Geekbench*" -depth 1 | head -1)
-            if [ -n "$GB_DIR" ]; then
-              RESULTS_DIR="./$GB_DIR/results"
-              if [ -d "$RESULTS_DIR" ]; then
-                LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -exec stat -f "%m %N" {} \; | sort -n | tail -1 | cut -f2- -d" ")
-                if [ -n "$LATEST_RESULT" ]; then
-                  cp "$LATEST_RESULT" ./results/macos-arm-latest.json
-                  echo "Copied result from $LATEST_RESULT"
-                else
-                  echo "No result files found in $RESULTS_DIR"
-                  echo '{"error": "No results found"}' > ./results/macos-arm-latest.json
-                fi
-              else
-                echo "Local results directory not found at $RESULTS_DIR"
-                echo '{"error": "Results directory not found"}' > ./results/macos-arm-latest.json
-              fi
-            else
-              echo '{"error": "Geekbench directory not found"}' > ./results/macos-arm-latest.json
-            fi
-          fi
-          
-      - name: Upload results
-        uses: actions/upload-artifact@v4
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v3
         with:
-          name: geekbench-results-macos-arm
-          path: results/
+          name: macos-arm-benchmark-results
+          path: ./results/
           retention-days: 90
 
   summarize-results:

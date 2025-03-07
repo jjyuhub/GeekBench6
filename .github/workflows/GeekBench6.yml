@@ -15,13 +15,13 @@ jobs:
 
       - name: Download and install Geekbench 6
         run: |
-          wget https://cdn.geekbench.com/Geekbench-6.2.0-Linux.tar.gz
-          tar xf Geekbench-6.2.0-Linux.tar.gz
-          cd Geekbench-6.2.0-Linux
+          wget https://cdn.geekbench.com/Geekbench-6.4.0-Linux.tar.gz
+          tar xf Geekbench-6.4.0-Linux.tar.gz
+          cd Geekbench-6.4.0-Linux
           
       - name: Run Geekbench 6
         run: |
-          cd Geekbench-6.2.0-Linux
+          cd Geekbench-6.4.0-Linux
           ./geekbench6
           
       - name: Collect results
@@ -43,7 +43,7 @@ jobs:
             echo "Results directory not found at $RESULTS_DIR"
             
             # Try alternate location
-            RESULTS_DIR="$(pwd)/Geekbench-6.2.0-Linux/results"
+            RESULTS_DIR="$(pwd)/Geekbench-6.4.0-Linux/results"
             if [ -d "$RESULTS_DIR" ]; then
               LATEST_RESULT=$(find "$RESULTS_DIR" -name "*.json" -type f -printf "%T@ %p\n" | sort -n | tail -1 | cut -f2- -d" ")
               if [ -n "$LATEST_RESULT" ]; then
@@ -109,7 +109,7 @@ jobs:
       - name: Download Geekbench 6
         run: |
           Write-Host "Downloading Geekbench 6..."
-          $downloadUrl = "https://cdn.geekbench.com/Geekbench-6.2.1-WindowsSetup.exe"
+          $downloadUrl = "https://cdn.geekbench.com/Geekbench-6.4.0-WindowsSetup.exe"
           $setupFile = "$(Get-Location)\gb6_setup.exe"
           
           Write-Host "Download URL: $downloadUrl"
@@ -393,7 +393,7 @@ jobs:
       - name: Download and install Geekbench 6
         run: |
           # Download the Geekbench 6 CLI version directly
-          curl -L -o geekbench6.zip https://cdn.geekbench.com/Geekbench-6.2.0-Mac.zip
+          curl -L -o geekbench6.zip https://cdn.geekbench.com/Geekbench-6.4.0-Mac.zip
           unzip -l geekbench6.zip
           unzip geekbench6.zip
           ls -la
@@ -491,7 +491,7 @@ jobs:
       - name: Download and install Geekbench 6
         run: |
           # Download the Geekbench 6 CLI version directly
-          curl -L -o geekbench6.zip https://cdn.geekbench.com/Geekbench-6.2.0-Mac.zip
+          curl -L -o geekbench6.zip https://cdn.geekbench.com/Geekbench-6.4.0-Mac.zip
           unzip -q geekbench6.zip
           
           # Create results directory

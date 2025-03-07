@@ -422,8 +422,8 @@ jobs:
           # Create a temporary license file to allow offline running
           mkdir -p results
           
-          # Run Geekbench with CPU only and disable GPU detection
-          DYLD_LIBRARY_PATH="${GB_DIR}/Contents/Resources" "$GB_EXE" --cpu --no-gpu || echo "Geekbench completed with non-zero exit code"
+          # Run Geekbench with CPU only (GPU tests will be skipped)
+          DYLD_LIBRARY_PATH="${GB_DIR}/Contents/Resources" "$GB_EXE" --cpu || echo "Geekbench completed with non-zero exit code"
       
       - name: Collect results
         run: |

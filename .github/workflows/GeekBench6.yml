@@ -38,6 +38,6 @@ jobs:
         run: |
           curl -O https://cdn.geekbench.com/Geekbench-6.0.0-Mac.zip
           unzip Geekbench-6.0.0-Mac.zip
-          cd Geekbench\ 6
-          ./geekbench6
+          ./Geekbench\ 6.app/Contents/MacOS/Geekbench\ 6
         shell: bash
+
